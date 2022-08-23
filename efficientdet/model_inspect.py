@@ -30,6 +30,10 @@ import inference
 import utils
 from tensorflow.python.client import timeline  # pylint: disable=g-direct-tensorflow-import
 
+# custom
+from tf2 import label_util
+import json
+
 flags.DEFINE_string('model_name', 'efficientdet-d0', 'Model.')
 flags.DEFINE_string('logdir', '/tmp/deff/', 'log directory.')
 flags.DEFINE_string('runmode', 'dry', 'Run mode: {freeze, bm, dry}')
@@ -164,9 +168,14 @@ class ModelInspector(object):
     # Serving time batch size should be fixed.
     batch_size = self.batch_size or 1
     all_files = list(tf.io.gfile.glob(image_path_pattern))
+    all_files.sort()
     print('all_files=', all_files)
     num_batches = (len(all_files) + batch_size - 1) // batch_size
 
+    # for label
+    label_map = label_util.get_label_map('coco')
+
+    results = []
     for i in range(num_batches):
       batch_files = all_files[i * batch_size:(i + 1) * batch_size]
       height, width = self.model_config.image_size
@@ -181,12 +190,54 @@ class ModelInspector(object):
         raw_images += [np.zeros_like(raw_images[0])] * padding_size
 
       detections_bs = driver.serve_images(raw_images)
+
       for j in range(size_before_pad):
         img = driver.visualize(raw_images[j], detections_bs[j], **kwargs)
         img_id = str(i * batch_size + j)
         output_image_path = os.path.join(output_dir, img_id + '.jpg')
         Image.fromarray(img).save(output_image_path)
         print('writing file to %s' % output_image_path)
+
+        #sub_dir = output_dir + "/" + img_id
+        #if os.path.isdir(sub_dir) is False:
+        #    os.mkdir(sub_dir)
+
+        #count = 0 
+        #for prediction in detections_bs[j]:
+        #    if prediction[5] == 0.0:
+        #        continue
+        #    category = label_map[prediction[6].astype(int)]
+        #    score = float(prediction[5])
+        #    result = {
+        #            "image_id": img_id,
+        #            "bbox": prediction[1:5].tolist(),
+        #            "class": category,
+        #            "score": score,
+        #            }
+        #    results.append(result)
+
+        #    # crop image
+        #    top = prediction[1]     # ymin
+        #    left = prediction[2]    # xmin 
+        #    bottom = prediction[3]  # ymax
+        #    right = prediction[4]   # xmax
+
+        #    if right - left <= 128:
+        #        left = left - 16
+        #        right = right + 16
+
+        #    if bottom - top <= 128:
+        #        top = top - 16
+        #        bottom = bottom + 16
+
+        #    # crop((left, top, right, bottom))
+        #    cropped = Image.fromarray(raw_images[j]).crop(
+        #            (left, top, right, bottom))
+        #    cropped.save(f"{sub_dir}/{category}_{count}_{int(score * 100)}.jpg")
+        #    count += 1
+    print(results)
+    json.dump(results, open(output_dir + "/bbox.json", "w"), indent=4)
+
 
   def saved_model_benchmark(self,
                             image_path_pattern,
@@ -373,7 +424,6 @@ class ModelInspector(object):
       output = self.build_model(inputs)
 
       img = np.random.uniform(size=self.inputs_shape)
-
       sess.run(tf.global_variables_initializer())
       if self.tensorrt:
         fetches = [inputs.name] + [i.name for i in output]
@@ -514,7 +564,7 @@ def main(_):
 
 
 if __name__ == '__main__':
-  logging.set_verbosity(logging.WARNING)
+  logging.set_verbosity(logging.INFO)
   tf.enable_v2_tensorshape()
   tf.disable_eager_execution()
   app.run(main)

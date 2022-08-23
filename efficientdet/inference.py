@@ -509,12 +509,12 @@ class ServingDriver(object):
 
     # init session
     self.sess.run(
-        self.signitures['prediction'],
-        feed_dict={self.signitures['image_arrays']: image_arrays})
+            self.signitures['prediction'],
+            feed_dict={self.signitures['image_arrays']: image_arrays})
 
     start = time.perf_counter()
     for _ in range(10):
-      self.sess.run(
+      results = self.sess.run(
           self.signitures['prediction'],
           feed_dict={self.signitures['image_arrays']: image_arrays})
     end = time.perf_counter()
@@ -527,6 +527,7 @@ class ServingDriver(object):
       run_options = tf.RunOptions()
       run_options.trace_level = tf.RunOptions.FULL_TRACE
       run_metadata = tf.RunMetadata()
+
       self.sess.run(
           self.signitures['prediction'],
           feed_dict={self.signitures['image_arrays']: image_arrays},
